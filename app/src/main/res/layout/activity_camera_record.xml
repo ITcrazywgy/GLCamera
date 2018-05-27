@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.felix.glcamera.widgets.AutoFitGLSurfaceView
+        android:id="@+id/record_preview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:gravity="center_vertical"
+        android:minHeight="50dp"
+        android:orientation="horizontal"
+        android:padding="4dp">
+
+        <ImageView
+            android:id="@+id/title_back"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="10dip"
+            android:src="@drawable/record_cancel_seletor" />
+
+        <View
+            android:layout_width="0dip"
+            android:layout_height="1dip"
+            android:layout_weight="1.0" />
+
+        <CheckBox
+            android:id="@+id/record_camera_led"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/record_camera_flash_led_selector"
+            android:button="@null"
+            android:textColor="@android:color/white" />
+
+        <CheckBox
+            android:id="@+id/record_camera_switcher"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="35dip"
+            android:background="@drawable/record_camera_switch_selector"
+            android:button="@null" />
+
+
+    </LinearLayout>
+    <!-- camera_bottom_bg -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="160dp"
+        android:layout_gravity="bottom"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <ImageButton
+            android:id="@+id/record_cancel"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:background="@drawable/record_shape_oval_gray"
+            android:src="@drawable/record_back"
+            android:visibility="invisible"
+            tools:visibility="visible" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <com.felix.glcamera.widgets.ProgressView
+            android:id="@+id/record_progress"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_gravity="center" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <ImageButton
+            android:id="@+id/record_ok"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:background="@drawable/record_shape_oval_white"
+            android:src="@drawable/record_ok"
+            android:visibility="invisible"
+            tools:visibility="visible" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/record_gesture_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="160dp"
+        android:text="长按录像"
+        android:textColor="@android:color/white"
+        android:textSize="12sp" />
+
+
+    <Button
+        android:id="@+id/toggleRecording_button"
+        style="?android:attr/buttonStyleSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/toggleRecordingOn"
+        android:layout_gravity="center"
+        android:onClick="clickToggleRecording" />
+
+</FrameLayout>
