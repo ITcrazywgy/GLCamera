@@ -117,14 +117,7 @@ public class TextureMovieEncoder implements Runnable {
         }
     }
 
-    /**
-     * Tells the video recorder to start recording.  (Call from non-encoder thread.)
-     * <p>
-     * Creates a new thread, which will create an encoder using the provided configuration.
-     * <p>
-     * Returns after the recorder thread has started and is ready to accept Messages.  The
-     * encoder may not yet be fully configured.
-     */
+
     public void startRecording(EncoderConfig config) {
         Log.d(TAG, "Encoder: startRecording()");
         synchronized (mReadyFence) {
@@ -146,80 +139,39 @@ public class TextureMovieEncoder implements Runnable {
         mHandler.sendMessage(mHandler.obtainMessage(MSG_START_RECORDING, config));
     }
 
-    /**
-     * Tells the video recorder to stop recording.  (Call from non-encoder thread.)
-     * <p>
-     * Returns immediately; the encoder/muxer may not yet be finished creating the movie.
-     * <p>
-     * TODO: have the encoder thread invoke a callback on the UI thread just before it shuts down
-     * so we can provide reasonable status UI (and let the caller know that movie encoding
-     * has completed).
-     */
+
     public void stopRecording() {
         mHandler.sendMessage(mHandler.obtainMessage(MSG_STOP_RECORDING));
         mHandler.sendMessage(mHandler.obtainMessage(MSG_QUIT));
-        // We don't know when these will actually finish (or even start).  We don't want to
-        // delay the UI thread though, so we return immediately.
     }
 
-    /**
-     * Returns true if recording has been started.
-     */
+
     public boolean isRecording() {
         synchronized (mReadyFence) {
             return mRunning;
         }
     }
 
-    /**
-     * Tells the video recorder to refresh its EGL surface.  (Call from non-encoder thread.)
-     */
     public void updateSharedContext(EGLContext sharedContext) {
         mHandler.sendMessage(mHandler.obtainMessage(MSG_UPDATE_SHARED_CONTEXT, sharedContext));
     }
 
-    /**
-     * Tells the video recorder that a new frame is available.  (Call from non-encoder thread.)
-     * <p>
-     * This function sends a message and returns immediately.  This isn't sufficient -- we
-     * don't want the caller to latch a new frame until we're done with this one -- but we
-     * can get away with it so long as the input frame rate is reasonable and the encoder
-     * thread doesn't stall.
-     * <p>
-     * TODO: either block here until the texture has been rendered onto the encoder surface,
-     * or have a separate "block if still busy" method that the caller can execute immediately
-     * before it calls updateTexImage().  The latter is preferred because we don't want to
-     * stall the caller while this thread does work.
-     */
     public void frameAvailable(SurfaceTexture st) {
         synchronized (mReadyFence) {
             if (!mReady) {
                 return;
             }
         }
-
         float[] transform = new float[16];      // TODO - avoid alloc every frame
         st.getTransformMatrix(transform);
         long timestamp = st.getTimestamp();
         if (timestamp == 0) {
-            // Seeing this after device is toggled off/on with power button.  The
-            // first frame back has a zero timestamp.
-            //
-            // MPEG4Writer thinks this is cause to abort() in native code, so it's very
-            // important that we just ignore the frame.
-            Log.w(TAG, "HEY: got SurfaceTexture with timestamp of zero");
             return;
         }
-
         mHandler.sendMessage(mHandler.obtainMessage(MSG_FRAME_AVAILABLE, (int) (timestamp >> 32), (int) timestamp, transform));
     }
 
-    /**
-     * Tells the video recorder what texture name to use.  This is the external texture that
-     * we're receiving camera previews in.  (Call from non-encoder thread.)
-     * <p>
-     * TODO: do something less clumsy
-     */
+
     public void setTextureId(int id) {
         synchronized (mReadyFence) {
             if (!mReady) {
@@ -310,24 +262,12 @@ public class TextureMovieEncoder implements Runnable {
                 config.mOutputFile);
     }
 
-    /**
-     * Handles notification of an available frame.
-     * <p>
-     * The texture is rendered onto the encoder's input surface, along with a moving
-     * box (just because we can).
-     * <p>
-     * @param transform The texture transform, from SurfaceTexture.
-     * @param timestampNanos The frame's timestamp, from SurfaceTexture.
-     */
+
     private void handleFrameAvailable(float[] transform, long timestampNanos) {
         if (VERBOSE) Log.d(TAG, "handleFrameAvailable tr=" + transform);
         mFullScreen.drawFrame(mTextureId, transform);
-
-        drawBox(mFrameNum++);
-
         mInputWindowSurface.setPresentationTime(timestampNanos);
         mInputWindowSurface.swapBuffers();
-
         mVideoEncoder.drainEncoder(false);
     }
 
@@ -398,18 +338,5 @@ public class TextureMovieEncoder implements Runnable {
             mEglCore.release();
             mEglCore = null;
         }
-    }
-
-    /**
-     * Draws a box, with position offset.
-     */
-    private void drawBox(int posn) {
-        final int width = mInputWindowSurface.getWidth();
-        int xpos = (posn * 4) % (width - 50);
-        GLES20.glEnable(GLES20.GL_SCISSOR_TEST);
-        GLES20.glScissor(xpos, 0, 100, 100);
-        GLES20.glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-        GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
     }
 }
