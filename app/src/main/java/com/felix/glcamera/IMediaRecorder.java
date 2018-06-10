@@ -5,4 +5,12 @@ package com.felix.glcamera;
  */
 
 public interface IMediaRecorder {
+    void setOutputFile(String outputFile);
+
+    void setVideoSize(int width, int height);
+
+    void start();
+
+
+    void stop();
 }

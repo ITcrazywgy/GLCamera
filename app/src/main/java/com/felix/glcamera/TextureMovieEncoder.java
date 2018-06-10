@@ -54,9 +54,9 @@ import java.lang.ref.WeakReference;
  * <li>call TextureMovieEncoder#startRecording() with the config
  * <li>call TextureMovieEncoder#setTextureId() with the texture object that receives frames
  * <li>for each frame, after latching it with SurfaceTexture#updateTexImage(),
- *     call TextureMovieEncoder#frameAvailable().
+ * call TextureMovieEncoder#frameAvailable().
  * </ul>
- *
+ * <p>
  * TODO: tweak the API (esp. textureId) so it's less awkward for simple use cases.
  */
 public class TextureMovieEncoder implements Runnable {
@@ -94,7 +94,7 @@ public class TextureMovieEncoder implements Runnable {
      * under us).
      * <p>
      * TODO: make frame rate and iframe interval configurable?  Maybe use builder pattern
-     *       with reasonable defaults for those and bit rate.
+     * with reasonable defaults for those and bit rate.
      */
     public static class EncoderConfig {
         final File mOutputFile;
@@ -140,9 +140,23 @@ public class TextureMovieEncoder implements Runnable {
     }
 
 
-    public void stopRecording() {
+    public void stopRecording(boolean block) {
         mHandler.sendMessage(mHandler.obtainMessage(MSG_STOP_RECORDING));
         mHandler.sendMessage(mHandler.obtainMessage(MSG_QUIT));
+        if (block) {
+            synchronized (mReadyFence) {
+                if (!mRunning) {
+                    return;
+                }
+                while (mRunning) {
+                    try {
+                        mReadyFence.wait();
+                    } catch (InterruptedException ie) {
+                        // ignore
+                    }
+                }
+            }
+        }
     }
 
 
@@ -184,6 +198,7 @@ public class TextureMovieEncoder implements Runnable {
     /**
      * Encoder thread entry point.  Establishes Looper/Handler and waits for messages.
      * <p>
+     *
      * @see Thread#run()
      */
     @Override
@@ -201,6 +216,7 @@ public class TextureMovieEncoder implements Runnable {
         synchronized (mReadyFence) {
             mReady = mRunning = false;
             mHandler = null;
+            mReadyFence.notify();
         }
     }
 

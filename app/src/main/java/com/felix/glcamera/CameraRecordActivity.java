@@ -2,17 +2,10 @@ package com.felix.glcamera;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
-import android.graphics.SurfaceTexture;
-import android.hardware.Camera;
-import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.Handler;
-import android.os.Message;
-import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 import android.view.View;
@@ -29,10 +22,8 @@ import com.felix.glcamera.widgets.AutoFitGLSurfaceView;
 import com.felix.glcamera.widgets.ProgressView;
 
 import java.io.File;
-import java.io.IOException;
-import java.lang.ref.WeakReference;
 
-public class CameraRecordActivity extends AppCompatActivity implements View.OnClickListener, CameraRecorderHelper.OnPreparedListener, CameraRecorderHelper.OnErrorListener {
+public class CameraRecordActivity extends AppCompatActivity implements View.OnClickListener, CameraRecorderHelper.OnPreviewListener, CameraRecorderHelper.OnErrorListener {
     static final int FILTER_NONE = 0;
     static final int FILTER_BLACK_WHITE = 1;
     static final int FILTER_BLUR = 2;
@@ -115,29 +106,40 @@ public class CameraRecordActivity extends AppCompatActivity implements View.OnCl
     protected void onResume() {
         super.onResume();
         if (mRecorderHelper == null) {
-            initMediaRecorder();
+            initMediaRecorderHelper();
         } else {
             if (mRecorderHelper.isVideoExists()) {
-                mRecorderHelper.playVideo();
+                mRecorderHelper.startPlay();
             } else {
                 mRecordLed.setChecked(false);
-                mRecorderHelper.prepare();
+                mRecorderHelper.startPreview();
             }
         }
         mGLView.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        mRecorderHelper.stopPreview();
+        mRecorderHelper.stopRecord();
+        mRecorderHelper.stopPlay();
+        mRecorderHelper.release();
+        mGLView.onPause();
     }
 
     private static final int RECORD_TIME_MAX = 10 * 1000;
     public final static int RECORD_TIME_MIN = 1000;
     private int mMaxDuration = RECORD_TIME_MAX;
 
-    private void initMediaRecorder() {
+    private void initMediaRecorderHelper() {
         mRecorderHelper = new CameraRecorderHelper();
         mRecorderHelper.setOnErrorListener(this);
         mRecorderHelper.setOnPreparedListener(this);
-        mRecorderHelper.setGLSurfaceView(mGLView);
-        mRecorderHelper.prepare();
+        mRecorderHelper.setPreviewDisplay(mGLView);
+        mRecorderHelper.startPreview();
         mProgressView.setMaxDuration(mMaxDuration);
+
         mProgressView.setOnProgressListener(new ProgressView.OnProgressListener() {
             @Override
             public void onProgressStart() {
@@ -146,14 +148,14 @@ public class CameraRecordActivity extends AppCompatActivity implements View.OnCl
 
             @Override
             public void onProgressCancel() {
-                stopRecord();
+                mRecorderHelper.stopRecord();
                 mRecorderHelper.deleteVideoObject();
-                mRecorderHelper.prepare();
             }
 
             @Override
             public void onProgressEnd(float progress, long duration) {
-                stopRecord();
+                mRecorderHelper.stopRecord();
+                mRecorderHelper.stopPreview();
                 checkStatus();
             }
         });
@@ -166,11 +168,11 @@ public class CameraRecordActivity extends AppCompatActivity implements View.OnCl
                 Toast.makeText(this, "录制时间太短,请重新录制", Toast.LENGTH_SHORT).show();
                 mRecorderHelper.deleteVideoObject();
                 mProgressView.reset();
-                mRecorderHelper.prepare();
+                mRecorderHelper.startPreview();
             } else {
                 //显示提交按钮，同时播放录制视频
                 mProgressView.reset();
-                mRecorderHelper.playVideo();
+                mRecorderHelper.startPlay();
                 showNextStep();
             }
         }
@@ -212,50 +214,20 @@ public class CameraRecordActivity extends AppCompatActivity implements View.OnCl
         mRecordConfirm.setVisibility(View.INVISIBLE);
     }
 
-    private void stopRecord() {
-        mRecorderHelper.stopRecord();
-    }
-
     private void startRecord() {
         String key = String.valueOf(System.currentTimeMillis());
-        mRecorderHelper.setOutputDirectory(new File(Environment.getExternalStorageDirectory(), key).getAbsolutePath(), key);
+        mRecorderHelper.setOutputDirectory(new File(Environment.getExternalStorageDirectory(), "AV/" + key).getAbsolutePath(), key);
         mRecorderHelper.startRecord();
         mCameraSwitch.setVisibility(View.GONE);
         mRecordLed.setVisibility(View.GONE);
         mRecordGestureHint.setVisibility(View.INVISIBLE);
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        stopRecord();
-        mRecorderHelper.releasePlayer();
-        mGLView.onPause();
-    }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
     }
-
-
-
-   /* public void clickToggleRecording(@SuppressWarnings("unused") View unused) {
-        mRecordingEnabled = !mRecordingEnabled;
-        mGLView.queueEvent(new Runnable() {
-            @Override
-            public void run() {
-                // notify the renderer that we want to change the encoder's state
-                mRenderer.changeRecordingState(mRecordingEnabled);
-            }
-        });
-    }*/
-
-   /* private void updateControls() {
-        Button toggleRelease = (Button) findViewById(R.id.toggleRecording_button);
-        int id = mRecordingEnabled ? R.string.toggleRecordingOff : R.string.toggleRecordingOn;
-        toggleRelease.setText(id);
-    }*/
 
 
     @Override
@@ -286,8 +258,8 @@ public class CameraRecordActivity extends AppCompatActivity implements View.OnCl
                 break;
             case R.id.record_cancel:
                 mRecorderHelper.deleteVideoObject();
-                mRecorderHelper.releasePlayer();
-                mRecorderHelper.prepare();
+                mRecorderHelper.stopPlay();
+                mRecorderHelper.startPreview();
                 mProgressView.reset();
                 hideNextStep();
                 break;
@@ -295,11 +267,9 @@ public class CameraRecordActivity extends AppCompatActivity implements View.OnCl
     }
 
     @Override
-    public void onPrepared() {
+    public void onPreviewStarted(int previewWidth, int previewHeight) {
         Display display = ((WindowManager) getSystemService(WINDOW_SERVICE)).getDefaultDisplay();
         int rotation = display.getRotation();
-        int previewHeight = mRecorderHelper.getPreviewHeight();
-        int previewWidth = mRecorderHelper.getPreviewWidth();
         if (rotation == Surface.ROTATION_0 || rotation == Surface.ROTATION_180) {
             mGLView.setAspectRatio(previewHeight, previewWidth);
         } else {
@@ -307,8 +277,9 @@ public class CameraRecordActivity extends AppCompatActivity implements View.OnCl
         }
     }
 
+
     @Override
-    public void onVideoError(int what, int extra) {
+    public void onError(int what, String msg) {
 
     }
 

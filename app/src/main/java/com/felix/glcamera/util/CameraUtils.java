@@ -5,9 +5,6 @@ import android.content.pm.FeatureInfo;
 import android.content.pm.PackageManager;
 import android.hardware.Camera;
 import android.os.Build;
-import android.util.Log;
-
-import com.felix.glcamera.CameraRecorderHelper;
 
 import java.util.ArrayList;
 import java.util.Collections;

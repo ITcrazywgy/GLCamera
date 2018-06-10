@@ -1,6 +1,5 @@
 package com.felix.glcamera;
 
-import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
@@ -10,76 +9,64 @@ import android.hardware.Camera.Size;
 import android.media.AudioManager;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
-import android.media.MediaRecorder;
 import android.media.ThumbnailUtils;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.text.TextUtils;
 import android.util.Log;
-import android.view.SurfaceHolder;
-import android.view.SurfaceHolder.Callback;
+import android.view.Surface;
 
+import com.felix.glcamera.gles.FullFrameRect;
+import com.felix.glcamera.gles.Texture2dProgram;
 import com.felix.glcamera.util.CameraUtils;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
-import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.List;
+
+import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL10;
 
 import static android.hardware.Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO;
 import static android.hardware.Camera.Parameters.WHITE_BALANCE_AUTO;
 
 
 @SuppressWarnings("ALL")
-public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, SurfaceTexture.OnFrameAvailableListener {
+public class CameraRecorderHelper {
 
-    private static final int ERROR_CAMERA_PREVIEW = 1;
-    private static final int ERROR_FILE_CREATE = 2;
+    private static final int ERROR_CAMERA_OPEN = 1;
+    private static final int ERROR_CAMERA_EXISTED = 2;
+    private static final int ERROR_CAMERA_PREVIEW = 3;
+    private static final int ERROR_FILE_CREATE = 4;
     private static final int MAX_FRAME_RATE = 30;
 
     private Camera mCamera;
     private Parameters mParameters;
-    private SurfaceHolder mSurfaceHolder;
     private VideoObject mVideoObject;
     private OnErrorListener mOnErrorListener;
-    private OnPreparedListener mOnPreparedListener;
+    private OnPreviewListener mOnPreparedListener;
     private int mFrameRate = 15;
     private int mCameraId = CameraInfo.CAMERA_FACING_BACK;
-    private boolean mPrepared;
     private boolean mStartPreview;
-    private boolean mSurfaceCreated;
 
-    private volatile boolean mRecording;
-    private CameraHandler mCameraHandler;
-
-
-    CameraRecorder() {
-        mCameraHandler = new CameraHandler(this);
-    }
+    private MediaRecorder mMediaRecorder;
 
     private GLSurfaceView mGLSurfaceView;
 
     private CameraSurfaceRenderer mRenderer;
 
-    @SuppressLint("ObsoleteSdkInt")
     public void setPreviewDisplay(GLSurfaceView glSurfaceView) {
         this.mGLSurfaceView = glSurfaceView;
         mGLSurfaceView.setEGLContextClientVersion(2);
-        mRenderer = new CameraSurfaceRenderer(this);
+        mRenderer = new CameraSurfaceRenderer();
         mGLSurfaceView.setRenderer(mRenderer);
         mGLSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
-    }
-
-    public void prepare() {
-        this.mPrepared = true;
-        if (this.mSurfaceCreated) {
-            this.startPreview();
-        }
     }
 
 
@@ -91,57 +78,37 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
             if (result) {
                 this.mVideoObject = new VideoObject(outputDirectory, key);
             } else {
-                mOnErrorListener.onVideoError(ERROR_FILE_CREATE, 0);
+                mOnErrorListener.onError(ERROR_FILE_CREATE, "unable to create file");
             }
         }
     }
 
-    void start() {
-        if (this.mVideoObject != null && this.mSurfaceHolder != null && !this.mRecording) {
-            try {
-                mVideoEncoder = new TextureMovieEncoder();
-                this.mRecording = true;
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+    private volatile boolean isRecording = false;
+
+    public void startRecord() {
+        if (!isRecording) {
+            mMediaRecorder = new MediaRecorder(mGLSurfaceView);
+            mMediaRecorder.setOutputFile(this.getVideoPath());
+            mMediaRecorder.setVideoEncodingBitRate(4 * 1024 * 1024);
+            mMediaRecorder.setVideoSize(mPreviewHeight, mPreviewWidth);
+            mMediaRecorder.start();
+            isRecording = true;
         }
     }
 
-    public void stop() {
-        if (this.mVideoEncoder != null && mRecording) {
-            this.mMediaRecorder.setOnErrorListener(null);
-            this.mMediaRecorder.setPreviewDisplay(null);
-            try {
-                this.mVideoEncoder.stop();
-                this.mVideoEncoder.release();
-            } catch (IllegalStateException e) {
-                e.printStackTrace();
-            } catch (RuntimeException e) {
-                e.printStackTrace();
-            } catch (Exception e) {
-                e.printStackTrace();
+
+    public void stopRecord() {
+        if (isRecording) {
+            if (mMediaRecorder != null) {
+                mMediaRecorder.stop();
+                mMediaRecorder = null;
             }
+            isRecording = false;
         }
-
-        if (this.mCamera != null) {
-            try {
-                this.mCamera.lock();
-            } catch (RuntimeException e) {
-                e.printStackTrace();
-            }
-        }
-        this.mRecording = false;
-        this.stopPreview();
-        this.mPrepared = false;
-        this.mVideoEncoder = null;
-    }
-
-    public void release() {
-
     }
 
 
-    void setOnPreparedListener(OnPreparedListener preparedListener) {
+    void setOnPreparedListener(OnPreviewListener preparedListener) {
         this.mOnPreparedListener = preparedListener;
     }
 
@@ -233,23 +200,12 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
         }
     }
 
-    private TextureMovieEncoder mVideoEncoder;
-
-
     private boolean isSupported(List list, String target) {
         return list != null && list.contains(target);
     }
 
     private int mPreviewWidth = -1;
     private int mPreviewHeight = -1;
-
-    int getPreviewWidth() {
-        return mPreviewWidth;
-    }
-
-    int getPreviewHeight() {
-        return mPreviewHeight;
-    }
 
     private void prepareCameraParameters() {
         if (this.mParameters != null) {
@@ -272,7 +228,6 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
                 }
             }
             this.mParameters.setPreviewFrameRate(this.mFrameRate);
-
             //设置预览尺寸
             List<Size> supportedPreviewSizes = this.mParameters.getSupportedPreviewSizes();
             int preferPreviewWidth = mGLSurfaceView.getHeight();
@@ -281,28 +236,21 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
             this.mPreviewWidth = previewSize.width;
             this.mPreviewHeight = previewSize.height;
             this.mParameters.setPreviewSize(this.mPreviewWidth, this.mPreviewHeight);
-            //List<Size> supportedVideoSizes = this.mCamera.getParameters().getSupportedVideoSizes();
-            //mVideoSize = CameraUtils.chooseOptimalSize(supportedVideoSizes, this.mPreviewWidth, this.mPreviewHeight);
-
             if (isSupported(this.mParameters.getSupportedFocusModes(), FOCUS_MODE_CONTINUOUS_VIDEO)) {
                 this.mParameters.setFocusMode(FOCUS_MODE_CONTINUOUS_VIDEO);
             }
-
             if (isSupported(this.mParameters.getSupportedWhiteBalance(), WHITE_BALANCE_AUTO)) {
                 this.mParameters.setWhiteBalance(WHITE_BALANCE_AUTO);
             }
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1) {
                 if (this.mParameters.isVideoStabilizationSupported()) {
                     this.mParameters.setVideoStabilization(true);
                 }
             }
-
             if (!CameraUtils.isDevice("GT-N7100", "GT-I9308", "GT-I9300")) {
                 this.mParameters.set("cam_mode", 1);
                 this.mParameters.set("cam-mode", 1);
             }
-
             if (!CameraUtils.isDevice("GT-I9100"))
                 this.mParameters.setRecordingHint(true);
         }
@@ -320,7 +268,6 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
             mVideoObject.setVideoDuration((int) parseFloat(sDuration));
         }
     }
-
 
     private float parseFloat(String sValue) {
         try {
@@ -393,7 +340,6 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
         return null;
     }
 
-
     private boolean createVideoThumbnail(String videoPath, String videoThumbPath) {
         if (TextUtils.isEmpty(videoThumbPath)) return false;
         File file = new File(videoThumbPath);
@@ -431,9 +377,8 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
 
     private MediaPlayer mMediaPlayer;
 
-    public void playVideo() {
+    public void startPlay() {
         try {
-            if (mSurfaceHolder == null) return;
             if (mMediaPlayer == null) {
                 mMediaPlayer = new MediaPlayer();
                 mMediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
@@ -445,7 +390,8 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
                     }
                 });
                 mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-                mMediaPlayer.setDisplay(mSurfaceHolder);
+                Surface surface = new Surface(mSurfaceTexture);
+                mMediaPlayer.setSurface(surface);
                 mMediaPlayer.setDataSource(mVideoObject.getVideoPath());
                 mMediaPlayer.setLooping(true);
                 mMediaPlayer.prepareAsync();
@@ -455,7 +401,7 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
         }
     }
 
-    public void releasePlayer() {
+    public void stopPlay() {
         if (mMediaPlayer != null) {
             mMediaPlayer.stop();
             mMediaPlayer.release();
@@ -463,36 +409,74 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
         }
     }
 
+    public void startPreview() {
+        if (this.mCamera != null) {
+            if (this.mOnErrorListener != null) {
+                this.mOnErrorListener.onError(ERROR_CAMERA_EXISTED, "camera already initialized");
+            }
+            return;
+        }
+        if (this.mCameraId == CameraInfo.CAMERA_FACING_BACK) {
+            this.mCamera = Camera.open(CameraInfo.CAMERA_FACING_BACK);
+        } else {
+            this.mCamera = Camera.open(CameraInfo.CAMERA_FACING_FRONT);
+        }
+        if (mCamera == null) {
+            if (this.mOnErrorListener != null) {
+                this.mOnErrorListener.onError(ERROR_CAMERA_OPEN, "Unable to open camera");
+            }
+            return;
+        }
+        this.mCamera.setDisplayOrientation(90);
+        if (this.mSurfaceTexture != null) {
+            previewWithSurfaceTexture(this.mSurfaceTexture);
+        }
+        this.mStartPreview = true;
+    }
 
-    private void startPreview() {
-        if (!this.mStartPreview && this.mSurfaceHolder != null && this.mPrepared) {
-            this.mStartPreview = true;
-            try {
-                if (this.mCameraId == CameraInfo.CAMERA_FACING_BACK) {
-                    this.mCamera = Camera.open(CameraInfo.CAMERA_FACING_BACK);
-                } else {
-                    this.mCamera = Camera.open(CameraInfo.CAMERA_FACING_FRONT);
+    private SurfaceTexture mSurfaceTexture;
+
+    private void handleSurfaceTexturePrepared(SurfaceTexture st) {
+        if (mStartPreview) {
+            this.mSurfaceTexture = st;
+
+            previewWithSurfaceTexture(st);
+
+        }
+    }
+
+    private void previewWithSurfaceTexture(SurfaceTexture st) {
+        try {
+            this.mParameters = this.mCamera.getParameters();
+            this.prepareCameraParameters();
+            this.mCamera.setParameters(this.mParameters);
+            this.mGLSurfaceView.queueEvent(new Runnable() {
+                @Override
+                public void run() {
+                    mRenderer.setCameraPreviewSize(mPreviewWidth, mPreviewHeight);
                 }
-                this.mCamera.setDisplayOrientation(90);
-                this.mCamera.setPreviewDisplay(this.mSurfaceHolder);
-                this.mParameters = this.mCamera.getParameters();
-                this.prepareCameraParameters();
-                this.mCamera.setParameters(this.mParameters);
-                this.mCamera.startPreview();
-                if (this.mOnPreparedListener != null) {
-                    this.mOnPreparedListener.onPrepared();
+            });
+            st.setOnFrameAvailableListener(new SurfaceTexture.OnFrameAvailableListener() {
+                @Override
+                public void onFrameAvailable(SurfaceTexture surfaceTexture) {
+                    mGLSurfaceView.requestRender();
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-                if (this.mOnErrorListener != null) {
-                    this.mOnErrorListener.onVideoError(ERROR_CAMERA_PREVIEW, 0);
-                }
+            });
+            this.mCamera.setPreviewTexture(st);
+            this.mCamera.startPreview();
+            if (this.mOnPreparedListener != null) {
+                this.mOnPreparedListener.onPreviewStarted(this.mPreviewWidth, this.mPreviewHeight);
+            }
+        } catch (IOException ioe) {
+            if (this.mOnErrorListener != null) {
+                this.mOnErrorListener.onError(ERROR_CAMERA_PREVIEW, "Unable to preview");
             }
         }
     }
 
 
-    private void stopPreview() {
+    public void stopPreview() {
+        this.mStartPreview = false;
         if (this.mCamera != null) {
             try {
                 this.mCamera.stopPreview();
@@ -503,61 +487,26 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
             }
             this.mCamera = null;
         }
-        this.mStartPreview = false;
     }
 
-
-    @Override
-    public void surfaceCreated(SurfaceHolder holder) {
-        this.mSurfaceHolder = holder;
-        this.mSurfaceCreated = true;
-        if (isVideoExists()) {
-            playVideo();
-        } else {
-            if (this.mPrepared && !this.mStartPreview) {
-                this.startPreview();
+    public void release() {
+        this.mGLSurfaceView.queueEvent(new Runnable() {
+            @Override
+            public void run() {
+                mRenderer.release();
             }
-        }
+        });
     }
-
-    @Override
-    public void surfaceChanged(SurfaceHolder surfaceHolder, int format, int width, int height) {
-        this.mSurfaceHolder = surfaceHolder;
-    }
-
-    @Override
-    public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
-        this.mSurfaceHolder = null;
-        this.mSurfaceCreated = false;
-    }
-
-
-    @Override
-    public void onError(MediaRecorder mr, int what, int extra) {
-        try {
-            if (mr != null) {
-                mr.reset();
-            }
-        } catch (IllegalStateException e) {
-            e.printStackTrace();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        if (this.mOnErrorListener != null) {
-            this.mOnErrorListener.onVideoError(what, extra);
-        }
-    }
-
 
     public interface OnErrorListener {
-        void onVideoError(int what, int extra);
+        void onError(int what, String msg);
     }
 
-    public interface OnPreparedListener {
-        void onPrepared();
+    public interface OnPreviewListener {
+        void onPreviewStarted(int previewWidth, int previewHeight);
     }
 
-    public static class VideoObject implements Serializable {
+    private static class VideoObject implements Serializable {
         private static final long serialVersionUID = -3584369940642260675L;
         private String outputDirectory;
         private String outputVideoThumbPath;
@@ -612,55 +561,174 @@ public class CameraRecorder implements Callback, MediaRecorder.OnErrorListener, 
             this.videoDuration = videoDuration;
         }
 
-
     }
 
 
-    static class CameraHandler extends Handler {
-        public static final int MSG_SET_SURFACE_TEXTURE = 0;
+    private class CameraSurfaceRenderer implements GLSurfaceView.Renderer {
+        private static final int RECORDING_OFF = 0;
+        private static final int RECORDING_ON = 1;
+        private static final int RECORDING_RESUMED = 2;
+        private FullFrameRect mFullScreen;
+        private final float[] mTexMatrix = new float[16];
+        private int mTextureId;
+        private SurfaceTexture mSurfaceTexture;
+        private boolean mRecordingEnabled;
+        private int mRecordingStatus;
+        private boolean mIncomingSizeUpdated;
+        private int mIncomingWidth;
+        private int mIncomingHeight;
+        private int mCurrentFilter;
+        private int mNewFilter;
+        private SurfaceHandler mSurfaceHandler;
 
-        private WeakReference<CameraRecorder> mWeakRef;
+        CameraSurfaceRenderer() {
+            mSurfaceHandler = new SurfaceHandler(Looper.getMainLooper());
+            mTextureId = -1;
+            mRecordingStatus = -1;
+            mRecordingEnabled = false;
 
-        public CameraHandler(CameraRecorder activity) {
-            mWeakRef = new WeakReference<>(activity);
+            mIncomingSizeUpdated = false;
+            mIncomingWidth = mIncomingHeight = -1;
+
+            // We could preserve the old filter mode, but currently not bothering.
+            mCurrentFilter = -1;
+            mNewFilter = CameraRecordActivity.FILTER_NONE;
         }
 
-        public void invalidateHandler() {
-            mWeakRef.clear();
+        public void release() {
+            if (mSurfaceTexture != null) {
+                mSurfaceTexture.release();
+                mSurfaceTexture = null;
+            }
+            if (mFullScreen != null) {
+                mFullScreen.release(false);     // assume the GLSurfaceView EGL context is about
+                mFullScreen = null;             //  to be destroyed
+            }
+            mIncomingWidth = mIncomingHeight = -1;
+        }
+
+        public void changeRecordingState(boolean isRecording) {
+            mRecordingEnabled = isRecording;
+        }
+
+        private void updateFilter() {
+            Texture2dProgram.ProgramType programType;
+            float[] kernel = null;
+            float colorAdj = 0.0f;
+            switch (mNewFilter) {
+                case CameraRecordActivity.FILTER_NONE:
+                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT;
+                    break;
+                case CameraRecordActivity.FILTER_BLACK_WHITE:
+
+                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_BW;
+                    break;
+                case CameraRecordActivity.FILTER_BLUR:
+                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_FILT;
+                    kernel = new float[]{
+                            1f / 16f, 2f / 16f, 1f / 16f,
+                            2f / 16f, 4f / 16f, 2f / 16f,
+                            1f / 16f, 2f / 16f, 1f / 16f};
+                    break;
+                case CameraRecordActivity.FILTER_SHARPEN:
+                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_FILT;
+                    kernel = new float[]{
+                            0f, -1f, 0f,
+                            -1f, 5f, -1f,
+                            0f, -1f, 0f};
+                    break;
+                case CameraRecordActivity.FILTER_EDGE_DETECT:
+                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_FILT;
+                    kernel = new float[]{
+                            -1f, -1f, -1f,
+                            -1f, 8f, -1f,
+                            -1f, -1f, -1f};
+                    break;
+                case CameraRecordActivity.FILTER_EMBOSS:
+                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_FILT;
+                    kernel = new float[]{
+                            2f, 0f, 0f,
+                            0f, -1f, 0f,
+                            0f, 0f, -1f};
+                    colorAdj = 0.5f;
+                    break;
+                default:
+                    throw new RuntimeException("Unknown filter mode " + mNewFilter);
+            }
+            if (programType != mFullScreen.getProgram().getProgramType()) {
+                mFullScreen.changeProgram(new Texture2dProgram(programType));
+                mIncomingSizeUpdated = true;
+            }
+            if (kernel != null) {
+                mFullScreen.getProgram().setKernel(kernel, colorAdj);
+            }
+            mCurrentFilter = mNewFilter;
+        }
+
+        void setCameraPreviewSize(int width, int height) {
+            mIncomingWidth = width;
+            mIncomingHeight = height;
+            mIncomingSizeUpdated = true;
+        }
+
+        private boolean isPrepared = false;
+
+        @Override
+        public void onSurfaceCreated(GL10 gl, EGLConfig config) {
+            this.mRecordingStatus = RECORDING_OFF;
+            this.mFullScreen = new FullFrameRect(new Texture2dProgram(Texture2dProgram.ProgramType.TEXTURE_EXT));
+            this.mTextureId = this.mFullScreen.createTextureObject();
+            this.mSurfaceTexture = new SurfaceTexture(mTextureId);
+            this.isPrepared = true;
+            this.mSurfaceHandler.sendMessage(mSurfaceHandler.obtainMessage(SurfaceHandler.MSG_SET_SURFACE_TEXTURE, this.mSurfaceTexture));
+        }
+
+
+        @Override
+        public void onSurfaceChanged(GL10 gl, int width, int height) {
+
+        }
+
+
+        @Override
+        public void onDrawFrame(GL10 gl) {
+            mSurfaceTexture.updateTexImage();
+            if (isRecording && mMediaRecorder != null) {
+                mMediaRecorder.onFrameAvailable(mTextureId, mSurfaceTexture);
+            }
+            if (mIncomingWidth <= 0 || mIncomingHeight <= 0) {
+                return;
+            }
+            if (mCurrentFilter != mNewFilter) {
+                updateFilter();
+            }
+            if (mIncomingSizeUpdated) {
+                mFullScreen.getProgram().setTexSize(mIncomingWidth, mIncomingHeight);
+                mIncomingSizeUpdated = false;
+            }
+            mSurfaceTexture.getTransformMatrix(mTexMatrix);
+            mFullScreen.drawFrame(mTextureId, mTexMatrix);
+        }
+    }
+
+
+    private class SurfaceHandler extends Handler {
+        private static final int MSG_SET_SURFACE_TEXTURE = 0;
+
+        SurfaceHandler(Looper mainLooper) {
+            super(mainLooper);
         }
 
         @Override
         public void handleMessage(Message inputMessage) {
             int what = inputMessage.what;
-            CameraRecorder recorderHelper = mWeakRef.get();
-            if (recorderHelper == null) {
-                return;
-            }
             switch (what) {
                 case MSG_SET_SURFACE_TEXTURE:
-                    recorderHelper.handleSetSurfaceTexture((SurfaceTexture) inputMessage.obj);
+                    handleSurfaceTexturePrepared((SurfaceTexture) inputMessage.obj);
                     break;
                 default:
                     throw new RuntimeException("unknown msg " + what);
             }
         }
     }
-
-
-    private void handleSetSurfaceTexture(SurfaceTexture st) {
-        st.setOnFrameAvailableListener(this);
-        try {
-            mCamera.setPreviewTexture(st);
-        } catch (IOException ioe) {
-            throw new RuntimeException(ioe);
-        }
-        mCamera.startPreview();
-    }
-
-    @Override
-    public void onFrameAvailable(SurfaceTexture st) {
-        mGLSurfaceView.requestRender();
-    }
-
-
 }

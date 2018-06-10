@@ -229,7 +229,6 @@ public class ProgressView extends View {
         canvas.drawCircle(cx, cy, r, mOuterCirclePaint);
         //小圆
         canvas.drawCircle(cx, cy, r * 0.7f * (2 - mCurrentScaleFactor), mInnerCirclePaint);
-        Log.e(TAG, "onDraw:" + mCurrentScaleFactor);
         if (isLongPressStatus) {
             mCurrentDuration = System.currentTimeMillis() - mStartTime;
             if (mCurrentDuration >= mMaxDuration) {

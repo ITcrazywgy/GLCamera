@@ -113,13 +113,5 @@
         android:textSize="12sp" />
 
 
-    <Button
-        android:id="@+id/toggleRecording_button"
-        style="?android:attr/buttonStyleSmall"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/toggleRecordingOn"
-        android:layout_gravity="center"
-        android:onClick="clickToggleRecording" />
 
 </FrameLayout>
