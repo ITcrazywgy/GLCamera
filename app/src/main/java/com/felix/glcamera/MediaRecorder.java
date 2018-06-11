@@ -20,7 +20,7 @@ public class MediaRecorder implements IMediaRecorder {
     private int mBitRate;
     private int mVideoWidth;
     private int mVideoHeight;
-
+    private FilterType mFilterType;
 
     public MediaRecorder(GLSurfaceView gLSurfaceView) {
         this.mGLSurfaceView = gLSurfaceView;
@@ -42,6 +42,13 @@ public class MediaRecorder implements IMediaRecorder {
         this.mVideoHeight = height;
     }
 
+    public void setFilterType(FilterType filterType) {
+        this.mFilterType = filterType;
+    }
+
+    public FilterType getFilterType() {
+        return mFilterType;
+    }
 
     @Override
     public void start() {
@@ -49,7 +56,7 @@ public class MediaRecorder implements IMediaRecorder {
             @Override
             public void run() {
                 EGLContext eglContext = EGL14.eglGetCurrentContext();
-                EncoderConfig encoderConfig = new EncoderConfig(new File(mOutputFile), mVideoWidth, mVideoHeight, mBitRate, eglContext);
+                EncoderConfig encoderConfig = new EncoderConfig(new File(mOutputFile), mVideoWidth, mVideoHeight, mBitRate, eglContext, getFilterType());
                 mVideoEncoder.startRecording(encoderConfig);
             }
         });
@@ -57,7 +64,8 @@ public class MediaRecorder implements IMediaRecorder {
 
     @Override
     public void stop() {
-        mVideoEncoder.stopRecording(true);
+        mVideoEncoder.stopRecording();
+        mVideoEncoder.waitForStop();
     }
 
 

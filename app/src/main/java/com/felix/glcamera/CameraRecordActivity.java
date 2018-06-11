@@ -2,6 +2,7 @@ package com.felix.glcamera;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.app.Activity;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -23,13 +24,8 @@ import com.felix.glcamera.widgets.ProgressView;
 
 import java.io.File;
 
-public class CameraRecordActivity extends AppCompatActivity implements View.OnClickListener, CameraRecorderHelper.OnPreviewListener, CameraRecorderHelper.OnErrorListener {
-    static final int FILTER_NONE = 0;
-    static final int FILTER_BLACK_WHITE = 1;
-    static final int FILTER_BLUR = 2;
-    static final int FILTER_SHARPEN = 3;
-    static final int FILTER_EDGE_DETECT = 4;
-    static final int FILTER_EMBOSS = 5;
+public class CameraRecordActivity extends Activity implements View.OnClickListener, CameraRecorderHelper.OnPreviewListener, CameraRecorderHelper.OnErrorListener {
+
 
     private CheckBox mCameraSwitch;
     private CheckBox mRecordLed;
@@ -105,6 +101,7 @@ public class CameraRecordActivity extends AppCompatActivity implements View.OnCl
     @Override
     protected void onResume() {
         super.onResume();
+        setFullScreen(getWindow());
         if (mRecorderHelper == null) {
             initMediaRecorderHelper();
         } else {
@@ -280,7 +277,10 @@ public class CameraRecordActivity extends AppCompatActivity implements View.OnCl
 
     @Override
     public void onError(int what, String msg) {
-
+        Toast.makeText(this, "录制视频失败", Toast.LENGTH_SHORT).show();
+        mRecorderHelper.deleteVideoObject();
+        mProgressView.reset();
+        finish();
     }
 
 

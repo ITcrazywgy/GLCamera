@@ -35,6 +35,8 @@ import javax.microedition.khronos.opengles.GL10;
 
 import static android.hardware.Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO;
 import static android.hardware.Camera.Parameters.WHITE_BALANCE_AUTO;
+import static com.felix.glcamera.FilterType.FILTER_NONE;
+import static com.felix.glcamera.FilterType.FILTER_NORMAL;
 
 
 @SuppressWarnings("ALL")
@@ -54,6 +56,7 @@ public class CameraRecorderHelper {
     private int mFrameRate = 15;
     private int mCameraId = CameraInfo.CAMERA_FACING_BACK;
     private boolean mStartPreview;
+    private boolean mStartPlay;
 
     private MediaRecorder mMediaRecorder;
 
@@ -84,13 +87,15 @@ public class CameraRecorderHelper {
     }
 
     private volatile boolean isRecording = false;
+    private volatile boolean isPlaying = false;
 
     public void startRecord() {
         if (!isRecording) {
             mMediaRecorder = new MediaRecorder(mGLSurfaceView);
             mMediaRecorder.setOutputFile(this.getVideoPath());
-            mMediaRecorder.setVideoEncodingBitRate(4 * 1024 * 1024);
+            mMediaRecorder.setVideoEncodingBitRate(2 * 1024 * 1024);
             mMediaRecorder.setVideoSize(mPreviewHeight, mPreviewWidth);
+            mMediaRecorder.setFilterType(mRenderer.mCurrentFilter);
             mMediaRecorder.start();
             isRecording = true;
         }
@@ -378,30 +383,34 @@ public class CameraRecorderHelper {
     private MediaPlayer mMediaPlayer;
 
     public void startPlay() {
-        try {
-            if (mMediaPlayer == null) {
-                mMediaPlayer = new MediaPlayer();
-                mMediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-                    @Override
-                    public void onPrepared(MediaPlayer mp) {
-                        if (!mMediaPlayer.isPlaying()) {
-                            mMediaPlayer.start();
+        if (!isPlaying) {
+            try {
+                if (mMediaPlayer == null) {
+                    mMediaPlayer = new MediaPlayer();
+                    mMediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+                        @Override
+                        public void onPrepared(MediaPlayer mp) {
+                            if (!mMediaPlayer.isPlaying()) {
+                                mMediaPlayer.start();
+                            }
                         }
+                    });
+                    mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                    if (mSurfaceTexture != null) {
+                        playWithSurfaceTexture(mSurfaceTexture);
                     }
-                });
-                mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-                Surface surface = new Surface(mSurfaceTexture);
-                mMediaPlayer.setSurface(surface);
-                mMediaPlayer.setDataSource(mVideoObject.getVideoPath());
-                mMediaPlayer.setLooping(true);
-                mMediaPlayer.prepareAsync();
+                    this.mStartPlay = true;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+            isPlaying = true;
         }
     }
 
     public void stopPlay() {
+        this.mStartPlay = false;
+        this.isPlaying = false;
         if (mMediaPlayer != null) {
             mMediaPlayer.stop();
             mMediaPlayer.release();
@@ -439,9 +448,39 @@ public class CameraRecorderHelper {
     private void handleSurfaceTexturePrepared(SurfaceTexture st) {
         if (mStartPreview) {
             this.mSurfaceTexture = st;
-
             previewWithSurfaceTexture(st);
+        } else if (mStartPlay) {
+            this.mSurfaceTexture = st;
+            playWithSurfaceTexture(st);
+        }
+    }
 
+    private void playWithSurfaceTexture(SurfaceTexture st) {
+        try {
+            Surface surface = new Surface(mSurfaceTexture);
+            mMediaPlayer.setSurface(surface);
+            st.setOnFrameAvailableListener(new SurfaceTexture.OnFrameAvailableListener() {
+                @Override
+                public void onFrameAvailable(SurfaceTexture surfaceTexture) {
+                    mGLSurfaceView.requestRender();
+                }
+            });
+            final int videoWidth = mVideoObject.getVideoWidth();
+            final int videoHeight = mVideoObject.getVideoHeight();
+            this.mGLSurfaceView.queueEvent(new Runnable() {
+                @Override
+                public void run() {
+                    mRenderer.setCameraPreviewSize(videoWidth, videoHeight);
+                }
+            });
+            if (this.mOnPreparedListener != null) {
+                this.mOnPreparedListener.onPreviewStarted(videoHeight, videoWidth);
+            }
+            mMediaPlayer.setDataSource(mVideoObject.getVideoPath());
+            mMediaPlayer.setLooping(true);
+            mMediaPlayer.prepareAsync();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -490,6 +529,7 @@ public class CameraRecorderHelper {
     }
 
     public void release() {
+        mSurfaceTexture = null;
         this.mGLSurfaceView.queueEvent(new Runnable() {
             @Override
             public void run() {
@@ -565,6 +605,7 @@ public class CameraRecorderHelper {
 
 
     private class CameraSurfaceRenderer implements GLSurfaceView.Renderer {
+
         private static final int RECORDING_OFF = 0;
         private static final int RECORDING_ON = 1;
         private static final int RECORDING_RESUMED = 2;
@@ -577,8 +618,8 @@ public class CameraRecorderHelper {
         private boolean mIncomingSizeUpdated;
         private int mIncomingWidth;
         private int mIncomingHeight;
-        private int mCurrentFilter;
-        private int mNewFilter;
+        private FilterType mCurrentFilter;
+        private FilterType mNewFilter;
         private SurfaceHandler mSurfaceHandler;
 
         CameraSurfaceRenderer() {
@@ -591,8 +632,12 @@ public class CameraRecorderHelper {
             mIncomingWidth = mIncomingHeight = -1;
 
             // We could preserve the old filter mode, but currently not bothering.
-            mCurrentFilter = -1;
-            mNewFilter = CameraRecordActivity.FILTER_NONE;
+            mCurrentFilter = FILTER_NONE;
+            mNewFilter = FilterType.FILTER_NORMAL;
+        }
+
+        private FilterType getFilterType() {
+            return mCurrentFilter;
         }
 
         public void release() {
@@ -612,49 +657,10 @@ public class CameraRecorderHelper {
         }
 
         private void updateFilter() {
-            Texture2dProgram.ProgramType programType;
-            float[] kernel = null;
-            float colorAdj = 0.0f;
-            switch (mNewFilter) {
-                case CameraRecordActivity.FILTER_NONE:
-                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT;
-                    break;
-                case CameraRecordActivity.FILTER_BLACK_WHITE:
-
-                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_BW;
-                    break;
-                case CameraRecordActivity.FILTER_BLUR:
-                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_FILT;
-                    kernel = new float[]{
-                            1f / 16f, 2f / 16f, 1f / 16f,
-                            2f / 16f, 4f / 16f, 2f / 16f,
-                            1f / 16f, 2f / 16f, 1f / 16f};
-                    break;
-                case CameraRecordActivity.FILTER_SHARPEN:
-                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_FILT;
-                    kernel = new float[]{
-                            0f, -1f, 0f,
-                            -1f, 5f, -1f,
-                            0f, -1f, 0f};
-                    break;
-                case CameraRecordActivity.FILTER_EDGE_DETECT:
-                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_FILT;
-                    kernel = new float[]{
-                            -1f, -1f, -1f,
-                            -1f, 8f, -1f,
-                            -1f, -1f, -1f};
-                    break;
-                case CameraRecordActivity.FILTER_EMBOSS:
-                    programType = Texture2dProgram.ProgramType.TEXTURE_EXT_FILT;
-                    kernel = new float[]{
-                            2f, 0f, 0f,
-                            0f, -1f, 0f,
-                            0f, 0f, -1f};
-                    colorAdj = 0.5f;
-                    break;
-                default:
-                    throw new RuntimeException("Unknown filter mode " + mNewFilter);
-            }
+            FilterType.FilterInfo filterInfo = FilterType.getFilterInfo(mNewFilter);
+            Texture2dProgram.ProgramType programType = filterInfo.programType;
+            float[] kernel = filterInfo.kernel;
+            float colorAdj = filterInfo.colorAdj;
             if (programType != mFullScreen.getProgram().getProgramType()) {
                 mFullScreen.changeProgram(new Texture2dProgram(programType));
                 mIncomingSizeUpdated = true;
@@ -693,21 +699,32 @@ public class CameraRecorderHelper {
         @Override
         public void onDrawFrame(GL10 gl) {
             mSurfaceTexture.updateTexImage();
-            if (isRecording && mMediaRecorder != null) {
-                mMediaRecorder.onFrameAvailable(mTextureId, mSurfaceTexture);
-            }
+
             if (mIncomingWidth <= 0 || mIncomingHeight <= 0) {
                 return;
             }
+
+            if (isPlaying) {
+                mNewFilter = FILTER_NORMAL;
+            }
+
             if (mCurrentFilter != mNewFilter) {
                 updateFilter();
             }
+
             if (mIncomingSizeUpdated) {
                 mFullScreen.getProgram().setTexSize(mIncomingWidth, mIncomingHeight);
                 mIncomingSizeUpdated = false;
             }
+
             mSurfaceTexture.getTransformMatrix(mTexMatrix);
             mFullScreen.drawFrame(mTextureId, mTexMatrix);
+
+            if (isRecording) {
+                if (mMediaRecorder != null) {
+                    mMediaRecorder.onFrameAvailable(mTextureId, mSurfaceTexture);
+                }
+            }
         }
     }
 

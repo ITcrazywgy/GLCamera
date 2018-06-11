@@ -99,17 +99,11 @@ public class Texture2dProgram {
             "void main() {\n" +
             "    int i = 0;\n" +
             "    vec4 sum = vec4(0.0);\n" +
-            "    if (vTextureCoord.x < vTextureCoord.y - 0.005) {\n" +
             "        for (i = 0; i < KERNEL_SIZE; i++) {\n" +
             "            vec4 texc = texture2D(sTexture, vTextureCoord + uTexOffset[i]);\n" +
             "            sum += texc * uKernel[i];\n" +
             "        }\n" +
             "    sum += uColorAdjust;\n" +
-            "    } else if (vTextureCoord.x > vTextureCoord.y + 0.005) {\n" +
-            "        sum = texture2D(sTexture, vTextureCoord);\n" +
-            "    } else {\n" +
-            "        sum.r = 1.0;\n" +
-            "    }\n" +
             "    gl_FragColor = sum;\n" +
             "}\n";
 
@@ -137,7 +131,6 @@ public class Texture2dProgram {
      */
     public Texture2dProgram(ProgramType programType) {
         mProgramType = programType;
-
         switch (programType) {
             case TEXTURE_2D:
                 mTextureTarget = GLES20.GL_TEXTURE_2D;

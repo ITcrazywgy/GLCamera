@@ -2,6 +2,7 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
+    android:background="@android:color/holo_red_dark"
     android:layout_height="match_parent">
 
     <com.felix.glcamera.widgets.AutoFitGLSurfaceView
@@ -111,7 +112,5 @@
         android:text="长按录像"
         android:textColor="@android:color/white"
         android:textSize="12sp" />
-
-
 
 </FrameLayout>

@@ -102,13 +102,15 @@ public class TextureMovieEncoder implements Runnable {
         final int mHeight;
         final int mBitRate;
         final EGLContext mEglContext;
+        final FilterType mFilterType;
 
-        public EncoderConfig(File outputFile, int width, int height, int bitRate, EGLContext sharedEglContext) {
+        public EncoderConfig(File outputFile, int width, int height, int bitRate, EGLContext sharedEglContext, FilterType filterType) {
             mOutputFile = outputFile;
             mWidth = width;
             mHeight = height;
             mBitRate = bitRate;
             mEglContext = sharedEglContext;
+            mFilterType = filterType;
         }
 
         @Override
@@ -140,25 +142,25 @@ public class TextureMovieEncoder implements Runnable {
     }
 
 
-    public void stopRecording(boolean block) {
+    public void stopRecording() {
         mHandler.sendMessage(mHandler.obtainMessage(MSG_STOP_RECORDING));
         mHandler.sendMessage(mHandler.obtainMessage(MSG_QUIT));
-        if (block) {
-            synchronized (mReadyFence) {
-                if (!mRunning) {
-                    return;
-                }
-                while (mRunning) {
-                    try {
-                        mReadyFence.wait();
-                    } catch (InterruptedException ie) {
-                        // ignore
-                    }
+    }
+
+    public void waitForStop() {
+        synchronized (mReadyFence) {
+            if (!mRunning) {
+                return;
+            }
+            while (mRunning) {
+                try {
+                    mReadyFence.wait();
+                } catch (InterruptedException ie) {
+                    // ignore
                 }
             }
         }
     }
-
 
     public boolean isRecording() {
         synchronized (mReadyFence) {
@@ -274,8 +276,7 @@ public class TextureMovieEncoder implements Runnable {
     private void handleStartRecording(EncoderConfig config) {
         Log.d(TAG, "handleStartRecording " + config);
         mFrameNum = 0;
-        prepareEncoder(config.mEglContext, config.mWidth, config.mHeight, config.mBitRate,
-                config.mOutputFile);
+        prepareEncoder(config.mEglContext, config.mWidth, config.mHeight, config.mBitRate, config.mOutputFile, config.mFilterType);
     }
 
 
@@ -328,7 +329,7 @@ public class TextureMovieEncoder implements Runnable {
         mFullScreen = new FullFrameRect(new Texture2dProgram(Texture2dProgram.ProgramType.TEXTURE_EXT));
     }
 
-    private void prepareEncoder(EGLContext sharedContext, int width, int height, int bitRate, File outputFile) {
+    private void prepareEncoder(EGLContext sharedContext, int width, int height, int bitRate, File outputFile, FilterType filterType) {
         try {
             mVideoEncoder = new VideoEncoderCore(width, height, bitRate, outputFile);
         } catch (IOException ioe) {
@@ -337,7 +338,19 @@ public class TextureMovieEncoder implements Runnable {
         mEglCore = new EglCore(sharedContext, EglCore.FLAG_RECORDABLE);
         mInputWindowSurface = new WindowSurface(mEglCore, mVideoEncoder.getInputSurface(), true);
         mInputWindowSurface.makeCurrent();
-        mFullScreen = new FullFrameRect(new Texture2dProgram(Texture2dProgram.ProgramType.TEXTURE_EXT));
+        mFullScreen = new FullFrameRect(createTextureProgram(filterType));
+    }
+
+    private Texture2dProgram createTextureProgram(FilterType filterType) {
+        FilterType.FilterInfo filterInfo = FilterType.getFilterInfo(filterType);
+        Texture2dProgram.ProgramType programType = filterInfo.programType;
+        float[] kernel = filterInfo.kernel;
+        float colorAdj = filterInfo.colorAdj;
+        Texture2dProgram texture2dProgram = new Texture2dProgram(programType);
+        if (kernel != null) {
+            texture2dProgram.setKernel(kernel, colorAdj);
+        }
+        return texture2dProgram;
     }
 
     private void releaseEncoder() {
