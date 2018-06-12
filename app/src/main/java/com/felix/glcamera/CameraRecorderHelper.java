@@ -104,6 +104,7 @@ public class CameraRecorderHelper {
 
     public void stopRecord() {
         if (isRecording) {
+            stopPreview();
             if (mMediaRecorder != null) {
                 mMediaRecorder.stop();
                 mMediaRecorder = null;
