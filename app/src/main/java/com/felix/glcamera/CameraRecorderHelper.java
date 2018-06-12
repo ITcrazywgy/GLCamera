@@ -473,9 +473,6 @@ public class CameraRecorderHelper {
                     mRenderer.setCameraPreviewSize(videoWidth, videoHeight);
                 }
             });
-            if (this.mOnPreparedListener != null) {
-                this.mOnPreparedListener.onPreviewStarted(videoHeight, videoWidth);
-            }
             mMediaPlayer.setDataSource(mVideoObject.getVideoPath());
             mMediaPlayer.setLooping(true);
             mMediaPlayer.prepareAsync();
@@ -503,9 +500,11 @@ public class CameraRecorderHelper {
             });
             this.mCamera.setPreviewTexture(st);
             this.mCamera.startPreview();
+
             if (this.mOnPreparedListener != null) {
                 this.mOnPreparedListener.onPreviewStarted(this.mPreviewWidth, this.mPreviewHeight);
             }
+
         } catch (IOException ioe) {
             if (this.mOnErrorListener != null) {
                 this.mOnErrorListener.onError(ERROR_CAMERA_PREVIEW, "Unable to preview");
@@ -534,6 +533,15 @@ public class CameraRecorderHelper {
             @Override
             public void run() {
                 mRenderer.release();
+            }
+        });
+    }
+
+    public void changeFilterMode(final FilterType filterType) {
+        mGLSurfaceView.queueEvent(new Runnable() {
+            @Override
+            public void run() {
+                mRenderer.changeFilterMode(filterType);
             }
         });
     }
@@ -634,6 +642,10 @@ public class CameraRecorderHelper {
             // We could preserve the old filter mode, but currently not bothering.
             mCurrentFilter = FILTER_NONE;
             mNewFilter = FilterType.FILTER_NORMAL;
+        }
+
+        private void changeFilterMode(FilterType filterType) {
+            mNewFilter = filterType;
         }
 
         private FilterType getFilterType() {

@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:background="@android:color/holo_red_dark"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@android:color/holo_red_dark">
 
     <com.felix.glcamera.widgets.AutoFitGLSurfaceView
         android:id="@+id/record_preview"
@@ -31,6 +32,14 @@
             android:layout_width="0dip"
             android:layout_height="1dip"
             android:layout_weight="1.0" />
+
+        <Spinner
+            android:id="@+id/record_camera_filter"
+            android:layout_width="150dp"
+            android:layout_height="wrap_content"
+            android:layout_marginRight="8dp"
+            android:textAlignment="center"
+            android:spinnerMode="dropdown" />
 
         <CheckBox
             android:id="@+id/record_camera_led"

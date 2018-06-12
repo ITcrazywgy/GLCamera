@@ -13,8 +13,11 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.AccelerateInterpolator;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.ImageButton;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -34,6 +37,7 @@ public class CameraRecordActivity extends Activity implements View.OnClickListen
     private TextView mRecordGestureHint;
     private AutoFitGLSurfaceView mGLView;
     private ProgressView mProgressView;
+    private Spinner mSpinnerFilter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,6 +80,46 @@ public class CameraRecordActivity extends Activity implements View.OnClickListen
                 mRecordGestureHint.setVisibility(View.INVISIBLE);
             }
         }, 5000);
+
+        mSpinnerFilter = findViewById(R.id.record_camera_filter);
+        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this, R.array.cameraFilterNames, android.R.layout.simple_spinner_item);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        mSpinnerFilter.setAdapter(adapter);
+        mSpinnerFilter.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                Spinner spinner = (Spinner) parent;
+                final int filterNum = spinner.getSelectedItemPosition();
+                if (mRecorderHelper != null) {
+                    switch (filterNum) {
+                        case 0:
+                            mRecorderHelper.changeFilterMode(FilterType.FILTER_NORMAL);
+                            break;
+                        case 1:
+                            mRecorderHelper.changeFilterMode(FilterType.FILTER_BLACK_WHITE);
+                            break;
+                        case 2:
+                            mRecorderHelper.changeFilterMode(FilterType.FILTER_BLUR);
+                            break;
+                        case 3:
+                            mRecorderHelper.changeFilterMode(FilterType.FILTER_SHARPEN);
+                            break;
+                        case 4:
+                            mRecorderHelper.changeFilterMode(FilterType.FILTER_EDGE_DETECT);
+                            break;
+                        case 5:
+                            mRecorderHelper.changeFilterMode(FilterType.FILTER_EMBOSS);
+                            break;
+                    }
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+
+            }
+        });
+
     }
 
 
@@ -217,6 +261,7 @@ public class CameraRecordActivity extends Activity implements View.OnClickListen
         mRecorderHelper.startRecord();
         mCameraSwitch.setVisibility(View.GONE);
         mRecordLed.setVisibility(View.GONE);
+        mSpinnerFilter.setVisibility(View.GONE);
         mRecordGestureHint.setVisibility(View.INVISIBLE);
     }
 
@@ -265,6 +310,10 @@ public class CameraRecordActivity extends Activity implements View.OnClickListen
 
     @Override
     public void onPreviewStarted(int previewWidth, int previewHeight) {
+        this.mCameraSwitch.setVisibility(View.VISIBLE);
+        this.mRecordLed.setVisibility(View.VISIBLE);
+        this.mSpinnerFilter.setVisibility(View.VISIBLE);
+
         Display display = ((WindowManager) getSystemService(WINDOW_SERVICE)).getDefaultDisplay();
         int rotation = display.getRotation();
         if (rotation == Surface.ROTATION_0 || rotation == Surface.ROTATION_180) {
