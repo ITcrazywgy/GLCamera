@@ -82,6 +82,11 @@ public class CameraRecordActivity extends Activity implements View.OnClickListen
         }, 5000);
 
         mSpinnerFilter = findViewById(R.id.record_camera_filter);
+        initSpinner();
+    }
+
+
+    private void initSpinner() {
         ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this, R.array.cameraFilterNames, android.R.layout.simple_spinner_item);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         mSpinnerFilter.setAdapter(adapter);
@@ -119,7 +124,6 @@ public class CameraRecordActivity extends Activity implements View.OnClickListen
 
             }
         });
-
     }
 
 
@@ -303,6 +307,7 @@ public class CameraRecordActivity extends Activity implements View.OnClickListen
                 mRecorderHelper.stopPlay();
                 mRecorderHelper.startPreview();
                 mProgressView.reset();
+                initSpinner();
                 hideNextStep();
                 break;
         }
